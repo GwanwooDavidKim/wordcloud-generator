@@ -1,1 +1,6 @@
-
+wordcloud
+konlpy
+matplotlib
+JPype1>=1.0.0
+numpy
+Pillow
