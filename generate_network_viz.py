@@ -17,27 +17,24 @@ OUTPUT_DIR = 'output'
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, 'network_viz.png') # 기존 출력 파일 이름
 
 # --- 시각화 조정 변수 ---
-NUM_COLS = 2         # 2x2 레이아웃
-MAX_NODE_SIZE = 3200 # 최대 노드 크기 약간 감소
+NUM_COLS = 2
+MAX_NODE_SIZE = 3200
 MIN_NODE_SIZE = 900
 MAX_NODE_ALPHA = 1.0
 MIN_NODE_ALPHA = 0.4
 FONT_SIZE = 8
 FONT_WEIGHT = 'bold'
-LAYOUT_K = 0.9       # 노드 간 기본 거리 약간 감소
+LAYOUT_K = 1.0       # <<< 노드 간 기본 거리 조정 (값을 키우면 더 멀어짐)
 LAYOUT_ITERATIONS = 150
-# FIG_SCALE 대신 figsize 직접 설정
-FIG_WIDTH = 10       # 전체 이미지 가로 크기
-FIG_HEIGHT = 7       # 전체 이미지 세로 크기 (가로보다 작게 설정)
+FIG_WIDTH = 10
+FIG_HEIGHT = 7
 
 EDGE_WIDTH = 0.5
 EDGE_ALPHA = 0.15
 
 # --- 사용할 컬러맵 ---
-COLOR_MAP_NAME = 'plasma' # <<< plasma 컬러맵 사용
+COLOR_MAP_NAME = 'OrRd' # <<< OrRd 컬러맵 사용
 DEFAULT_COLOR = 'grey'
-
-# --- 색상 보간 불필요 (컬러맵 직접 사용) ---
 
 def load_grouped_keywords(filepath):
     # ... (이전과 동일) ...
@@ -67,7 +64,7 @@ def load_grouped_keywords(filepath):
         raise
 
 def create_and_draw_subplots(sub_category_data):
-    """하위 카테고리별 네트워크 그래프 그리기 (2x2, plasma 컬러맵, 중요도 반영)"""
+    """하위 카테고리별 네트워크 그래프 그리기 (2x2, OrRd 컬러맵, 중요도 반영)"""
 
     num_sub_categories = len(sub_category_data)
     num_rows = math.ceil(num_sub_categories / NUM_COLS)
@@ -87,7 +84,6 @@ def create_and_draw_subplots(sub_category_data):
         raise FileNotFoundError(f"Font file not found or invalid: {FONT_PATH}")
     # --- 폰트 설정 끝 ---
 
-    # <<< figsize 직접 지정하여 직사각형 형태 만들기 >>>
     fig, axes = plt.subplots(num_rows, NUM_COLS, figsize=(FIG_WIDTH, FIG_HEIGHT))
     axes = axes.flatten()
 
@@ -112,6 +108,7 @@ def create_and_draw_subplots(sub_category_data):
             plot_index += 1
             continue
 
+
         print(f"'{sub_category}' 그래프 생성 및 그리기 시작 (컬러맵: {COLOR_MAP_NAME})...")
 
         G_sub = nx.Graph()
@@ -126,11 +123,13 @@ def create_and_draw_subplots(sub_category_data):
             for j in range(i + 1, len(keyword_list_for_edges)):
                 G_sub.add_edge(keyword_list_for_edges[i], keyword_list_for_edges[j])
 
-        # 레이아웃 계산 (중앙 노드 고정)
+        # --- 레이아웃 계산 (중앙 노드 고정, k값 조정) ---
         effective_k = LAYOUT_K
-        if G_sub.number_of_nodes() > 1:
-             effective_k = LAYOUT_K / np.log(G_sub.number_of_nodes() + 1)
-             effective_k = max(0.1, effective_k)
+        num_nodes = G_sub.number_of_nodes()
+        if num_nodes > 1:
+             # 노드 수 증가에 따라 k값을 더 빠르게 감소시켜 봄 (예: 0.6 제곱근)
+             effective_k = LAYOUT_K / (num_nodes ** 0.6)
+             effective_k = max(0.05, effective_k) # 최소 k값 보장
 
         fixed_positions = {}
         initial_pos = {}
@@ -145,6 +144,7 @@ def create_and_draw_subplots(sub_category_data):
                                fixed=fixed_nodes if fixed_nodes else None,
                                iterations=LAYOUT_ITERATIONS,
                                seed=42)
+        # --- 레이아웃 계산 끝 ---
 
         # 노드별 크기, 알파, 색상 계산
         keyword_to_size = {}
@@ -154,30 +154,26 @@ def create_and_draw_subplots(sub_category_data):
 
         for kw_idx, keyword in enumerate(keywords):
             # 중요도 비율 (0: 가장 중요, 1: 가장 덜 중요)
-            # 컬러맵 적용 시 비율을 반대로 해야할 수 있음 (plasma는 0이 어둡고 1이 밝음)
-            # 중요할수록 0에 가깝게 (어두운 색), 덜 중요할수록 1에 가깝게 (밝은 색)
-            importance_ratio_for_color = (kw_idx / (num_keywords - 1)) if num_keywords > 1 else 0
-            # 크기와 알파는 중요할수록 크게/불투명하게 (비율 반대로 사용)
-            importance_ratio_for_size_alpha = 1.0 - importance_ratio_for_color
+            importance_ratio = (kw_idx / (num_keywords - 1)) if num_keywords > 1 else 0
 
-            current_size = MIN_NODE_SIZE + (MAX_NODE_SIZE - MIN_NODE_SIZE) * importance_ratio_for_size_alpha
+            # 크기/알파는 중요할수록 크게/불투명하게 (1 - 비율 사용)
+            current_size = MIN_NODE_SIZE + (MAX_NODE_SIZE - MIN_NODE_SIZE) * (1 - importance_ratio)
             keyword_to_size[keyword] = current_size
-
-            current_alpha = MIN_NODE_ALPHA + (MAX_NODE_ALPHA - MIN_NODE_ALPHA) * importance_ratio_for_size_alpha
+            current_alpha = MIN_NODE_ALPHA + (MAX_NODE_ALPHA - MIN_NODE_ALPHA) * (1 - importance_ratio)
             keyword_to_alpha[keyword] = current_alpha
 
-            # <<< plasma 컬러맵에서 색상 가져오기 >>>
-            current_color_rgba = cmap(importance_ratio_for_color)
+            # <<< OrRd 컬러맵 적용 및 그라데이션 방향 반전 >>>
+            # 중요할수록 진한 색(cmap 값 1.0 근처), 덜 중요할수록 연한 색(cmap 값 0.0 근처)
+            color_ratio = 1.0 - importance_ratio
+            current_color_rgba = cmap(color_ratio)
             keyword_to_color[keyword] = current_color_rgba
 
         # NetworkX draw 함수용 리스트 준비
         node_list = list(G_sub.nodes())
         ordered_sizes = [keyword_to_size.get(node, MIN_NODE_SIZE) for node in node_list]
-        # ordered_alphas = [keyword_to_alpha.get(node, MIN_NODE_ALPHA) for node in node_list] # 알파 개별 적용 시
         ordered_colors = [keyword_to_color.get(node, mcolors.to_rgb(DEFAULT_COLOR)) for node in node_list]
 
         # 그리기
-        # 노드 알파는 MAX_NODE_ALPHA로 고정, 색/크기로 중요도 표현
         nx.draw_networkx_nodes(G_sub, pos, ax=ax, node_size=ordered_sizes, node_color=ordered_colors, alpha=MAX_NODE_ALPHA)
         nx.draw_networkx_edges(G_sub, pos, ax=ax, width=EDGE_WIDTH, alpha=EDGE_ALPHA, edge_color='grey')
         nx.draw_networkx_labels(G_sub, pos, ax=ax, font_size=FONT_SIZE, font_family=font_name, font_weight=FONT_WEIGHT)
@@ -191,7 +187,6 @@ def create_and_draw_subplots(sub_category_data):
     for i in range(plot_index, len(axes)):
         axes[i].axis('off')
 
-    # <<< tight_layout 패딩 증가시켜 잘림 방지 시도 >>>
     plt.tight_layout(pad=4.0)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     try:
@@ -201,7 +196,7 @@ def create_and_draw_subplots(sub_category_data):
         print(f"ERROR saving image file: {e}")
         raise e
     finally:
-        plt.close(fig) # 메모리 해제
+        plt.close(fig)
 
 def main():
     """메인 실행 함수"""
@@ -217,3 +212,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
