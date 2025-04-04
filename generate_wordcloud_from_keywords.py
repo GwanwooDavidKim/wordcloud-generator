@@ -8,13 +8,13 @@ from PIL import Image # 마스크 사용 시 필요
 # --- 설정값 ---
 INPUT_FILE = 'data/input_keywords.txt' # 키워드와 빈도수(중요도)가 저장된 파일
 FONT_PATH = 'fonts/NanumGothic.ttf'   # 레포지토리 내 폰트 파일 경로 (나눔고딕 추천)
-MASK_FILE = 'masks/cloud_mask.png'    # <<< 마스크 이미지 파일 경로 (추가됨)
+MASK_FILE = 'masks/cloud_mask.png'    # 마스크 이미지 파일 경로
 OUTPUT_DIR = 'output'                 # 출력 이미지를 저장할 디렉토리
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, 'wordcloud.png') # <<< 출력 파일 이름 변경 (선택사항)
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, 'wordcloud.png') # <<< 출력 파일 이름 변경
 BG_COLOR = 'white'                    # 배경색
 WIDTH = 800                           # 이미지 너비 (마스크 사용 시 무시될 수 있음)
 HEIGHT = 600                          # 이미지 높이 (마스크 사용 시 무시될 수 있음)
-COLORMAP = 'Reds'                    # <<< 단어 색상 스타일 ('Blues'로 변경됨)
+COLORMAP = 'Reds'                     # <<< 단어 색상 스타일 ('Reds'로 변경됨)
 
 def parse_keyword_file(filepath):
     """키워드 파일 파싱하여 딕셔너리로 반환"""
@@ -74,19 +74,19 @@ def generate_and_save_wordcloud(frequencies):
         print("경고: 입력된 키워드가 없습니다. 빈 이미지가 생성될 수 있습니다.")
         frequencies['키워드없음'] = 1 # 예시
 
-    # 마스크 이미지 로드 <<< 분리된 함수 호출
+    # 마스크 이미지 로드
     mask = load_mask_image(MASK_FILE)
 
     print("워드 클라우드 생성 시작...")
     try:
         wc = WordCloud(font_path=FONT_PATH,
-                       width=WIDTH if mask is None else None,   # <<< 마스크 있으면 너비/높이 None 설정 가능 (자동)
-                       height=HEIGHT if mask is None else None, # <<< 마스크 있으면 너비/높이 None 설정 가능 (자동)
+                       width=WIDTH if mask is None else None,   # 마스크 있으면 너비/높이 None 설정 가능 (자동)
+                       height=HEIGHT if mask is None else None, # 마스크 있으면 너비/높이 None 설정 가능 (자동)
                        background_color=BG_COLOR,
-                       colormap=COLORMAP,       # <<< 설정된 Colormap 사용
-                       mask=mask,               # <<< 로드된 마스크 전달
+                       colormap=COLORMAP,       # 설정된 Colormap ('Reds') 사용
+                       mask=mask,               # 로드된 마스크 전달
                        contour_width=1 if mask is not None else 0, # 외곽선 두께 (필요시 조절)
-                       contour_color='steelblue' if mask is not None else None, # 외곽선 색상 (필요시 조절)
+                       contour_color='firebrick' if mask is not None else None, # 외곽선 색상 (붉은 계열로 변경)
                        # 추가 옵션 (필요에 따라 조절)
                        max_words=200,          # 최대 단어 수
                        prefer_horizontal=0.9,  # 가로 단어 비율
