@@ -3,7 +3,7 @@ import json
 import os
 import networkx as nx
 import matplotlib
-matplotlib.use('Agg') # Non-GUI 환경용
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import math
@@ -11,58 +11,70 @@ import numpy as np
 import matplotlib.colors as mcolors
 
 # --- 설정값 ---
-INPUT_FILE = 'data/grouped_keywords.json' # <<< 기존 JSON 파일 이름
-FONT_PATH = 'fonts/NanumGothic.ttf'      # 나눔고딕 폰트 경로
+INPUT_FILE = 'data/grouped_keywords.json' # 기존 JSON 파일 이름
+FONT_PATH = 'fonts/NanumGothic.ttf'
 OUTPUT_DIR = 'output'
-OUTPUT_FILE = os.path.join(OUTPUT_DIR, 'network_viz.png') # <<< 원래 출력 파일 이름으로 복원!
+OUTPUT_FILE = os.path.join(OUTPUT_DIR, 'network_viz.png') # <<< 기존 출력 파일 이름
 
-# --- 시각화 조정 변수 (2x2 레이아웃 기준) ---
-NUM_COLS = 2         # 2x2 레이아웃
-MAX_NODE_SIZE = 4500 # 최대 노드 크기 (차이 강조)
-MIN_NODE_SIZE = 700  # 최소 노드 크기 (차이 강조)
-MAX_NODE_ALPHA = 1.0 # 최대 투명도 (불투명)
-# MIN_NODE_ALPHA = 0.4 # 필요시 최소 투명도 조절
-FONT_SIZE = 8        # 폰트 크기
-FONT_WEIGHT = 'bold' # 폰트 굵기
-LAYOUT_K = 1.0       # 노드 간 기본 거리
-LAYOUT_ITERATIONS = 150 # 레이아웃 계산 반복 횟수
-FIG_WIDTH = 10       # 전체 이미지 가로 크기
-FIG_HEIGHT = 7       # 전체 이미지 세로 크기 (직사각형)
+# --- 시각화 조정 변수 ---
+NUM_COLS = 2
+MAX_NODE_SIZE = 4500 # 가장 중요한 노드 크기
+MIN_NODE_SIZE = 700  # 나머지 노드 크기 (차이 크게)
+MAX_NODE_ALPHA = 1.0 # 노드 투명도 (고정)
+FONT_SIZE = 8
+FONT_WEIGHT = 'bold'
+LAYOUT_K = 0.9
+LAYOUT_ITERATIONS = 150
+FIG_WIDTH = 10
+FIG_HEIGHT = 7
 
-EDGE_WIDTH = 0.4     # 엣지 두께
-EDGE_ALPHA = 0.1     # 엣지 투명도
+EDGE_WIDTH = 0.4
+EDGE_ALPHA = 0.1
 
-# --- 사용할 컬러맵 ---
-COLOR_MAP_NAME = 'OrRd' # OrRd 컬러맵 사용
-DEFAULT_COLOR = 'grey' # 예외 상황용
+# --- 행별 기본 색상 ---
+ROW1_BASE_COLOR = 'dodgerblue'  # 1행 기본 파랑 계열
+ROW2_BASE_COLOR = 'crimson'    # 2행 기본 빨강 계열
+
+# --- 색 농도 조절 계수 ---
+DARK_SHADE_FACTOR = 0.6   # 중앙 노드 어둡게 (0~1, 작을수록 어두움)
+LIGHT_TINT_FACTOR = 0.6   # 주변 노드 밝게 (0~1, 클수록 밝음/흰색에 가까움)
+
+DEFAULT_COLOR = 'grey'
 
 # --- 유틸리티 함수 ---
+def get_color_shade(base_color_rgb, factor):
+    """기본 색상을 어둡게 만듦"""
+    return tuple(np.clip(np.array(base_color_rgb) * factor, 0, 1))
+
+def get_color_tint(base_color_rgb, factor):
+    """기본 색상을 밝게(흰색과 혼합) 만듦"""
+    white_rgb = np.array([1.0, 1.0, 1.0])
+    base = np.array(base_color_rgb)
+    tint_rgb = base * (1 - factor) + white_rgb * factor
+    return tuple(np.clip(tint_rgb, 0, 1))
+
 def get_text_color_for_bg(bg_color_rgb):
     """배경색 밝기 기준으로 텍스트 색상 결정"""
     luminance = 0.299*bg_color_rgb[0] + 0.587*bg_color_rgb[1] + 0.114*bg_color_rgb[2]
-    # RGB tuple에서 알파값(있다면) 제외하고 계산
-    # luminance = 0.299*bg_color_rgb[0] + 0.587*bg_color_rgb[1] + 0.114*bg_color_rgb[2]
     return 'white' if luminance < 0.5 else 'black'
 
 def load_grouped_keywords(filepath):
-    """JSON 파일 로드 (단일 최상위 카테고리 아래 4개 하위 카테고리 구조 가정)"""
+    # ... (이전과 동일) ...
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
         print(f"그룹화된 키워드 파일 로드 완료: {filepath}")
-
         if len(data) == 1:
             main_key = list(data.keys())[0]
             sub_category_data = data[main_key]
             sub_category_count = len(sub_category_data)
             print(f"총 하위 카테고리 개수: {sub_category_count} (in '{main_key}')")
-            if sub_category_count != NUM_COLS * 2: # 4개인지 확인
+            if sub_category_count != NUM_COLS * 2:
                  print(f"경고: 하위 카테고리 개수({sub_category_count})가 4개가 아닙니다. 레이아웃/색상 오류 가능성.")
             return sub_category_data
         else:
             print("오류: JSON 파일에 예상된 단일 최상위 카테고리가 없습니다.")
             raise ValueError("JSON format error: Expected a single top-level key.")
-
     except FileNotFoundError:
         print(f"오류: 입력 파일 '{filepath}'을 찾을 수 없습니다.")
         raise
@@ -74,7 +86,7 @@ def load_grouped_keywords(filepath):
         raise
 
 def create_and_draw_subplots(sub_category_data):
-    """하위 카테고리별 네트워크 그래프 그리기 (2x2, OrRd 컬러맵, 중요도/텍스트색상 반영)"""
+    """하위 카테고리별 네트워크 그래프 (2x2, 행별 색상, 중요도별 명암/크기, 텍스트색상)"""
 
     num_sub_categories = len(sub_category_data)
     num_rows = math.ceil(num_sub_categories / NUM_COLS)
@@ -99,9 +111,6 @@ def create_and_draw_subplots(sub_category_data):
 
     print(f"서브플롯 생성: {num_rows}행 x {NUM_COLS}열")
 
-    # --- 컬러맵 가져오기 ---
-    cmap = plt.get_cmap(COLOR_MAP_NAME)
-
     plot_index = 0
     for sub_category, keywords in sub_category_data.items():
         if plot_index >= len(axes):
@@ -110,16 +119,28 @@ def create_and_draw_subplots(sub_category_data):
 
         ax = axes[plot_index]
 
+        # --- 행에 따른 기본 색상 결정 ---
+        if plot_index < NUM_COLS: # 1행
+            base_color_name = ROW1_BASE_COLOR
+        else: # 2행
+            base_color_name = ROW2_BASE_COLOR
+        try:
+            base_rgb = mcolors.to_rgb(base_color_name)
+        except Exception:
+            print(f"Warning: Invalid color name {base_color_name}. Using default.")
+            base_rgb = mcolors.to_rgb(DEFAULT_COLOR)
+
+
         if not keywords:
+            # ... (빈 카테고리 처리) ...
             print(f"Skipping empty sub-category: {sub_category}")
             ax.set_title(f"{sub_category} (키워드 없음)", fontproperties=fm.FontProperties(fname=FONT_PATH, size=FONT_SIZE+2, weight=FONT_WEIGHT))
             ax.axis('off')
             plot_index += 1
             continue
 
-        print(f"'{sub_category}' 그래프 생성 및 그리기 시작 (컬러맵: {COLOR_MAP_NAME})...")
+        print(f"'{sub_category}' 그래프 생성 및 그리기 시작 (기본색: {base_color_name})...")
 
-        # 1. 그래프 생성
         G_sub = nx.Graph()
         center_node = None
         if keywords:
@@ -127,13 +148,12 @@ def create_and_draw_subplots(sub_category_data):
             for keyword in keywords:
                 G_sub.add_node(keyword)
 
-        # 2. 엣지 추가
         keyword_list_for_edges = list(keywords)
         for i in range(len(keyword_list_for_edges)):
             for j in range(i + 1, len(keyword_list_for_edges)):
                 G_sub.add_edge(keyword_list_for_edges[i], keyword_list_for_edges[j])
 
-        # 3. 레이아웃 계산 (중앙 노드 고정, k값 조정)
+        # 레이아웃 계산 (중앙 노드 고정)
         effective_k = LAYOUT_K
         num_nodes = G_sub.number_of_nodes()
         if num_nodes > 1:
@@ -154,7 +174,7 @@ def create_and_draw_subplots(sub_category_data):
                                iterations=LAYOUT_ITERATIONS,
                                seed=42)
 
-        # 4. 노드별 속성 계산 (크기, 색상, 텍스트 색상)
+        # 노드별 속성 계산 (크기, 색상, 텍스트 색상)
         node_attributes = {}
         num_keywords = len(keywords)
 
@@ -162,18 +182,23 @@ def create_and_draw_subplots(sub_category_data):
             importance_ratio = (kw_idx / (num_keywords - 1)) if num_keywords > 1 else 0
             importance_ratio_rev = 1.0 - importance_ratio
 
-            # 크기
-            current_size = MIN_NODE_SIZE + (MAX_NODE_SIZE - MIN_NODE_SIZE) * importance_ratio_rev
-            # OrRd 컬러맵 (중요할수록 진한 빨강)
-            color_ratio = importance_ratio_rev # 1.0(중요) -> 0.0(덜 중요)
-            current_color_rgba = cmap(color_ratio) # RGBA 반환
-            current_color_rgb = current_color_rgba[:3] # RGB만 사용
+            # 크기 (중앙 노드만 크게, 나머지는 작게)
+            current_size = MIN_NODE_SIZE
+            if kw_idx == 0:
+                current_size = MAX_NODE_SIZE
+
+            # 색상 (중앙 노드는 진하게, 나머지는 연하게)
+            if kw_idx == 0:
+                current_color_rgb = get_color_shade(base_rgb, DARK_SHADE_FACTOR)
+            else:
+                current_color_rgb = get_color_tint(base_rgb, LIGHT_TINT_FACTOR)
+
             # 텍스트 색상
             text_color = get_text_color_for_bg(current_color_rgb)
 
             node_attributes[keyword] = {
                 'size': current_size,
-                'color': current_color_rgba, # 컬러맵 결과 그대로 사용 (RGBA)
+                'color': current_color_rgb,
                 'text_color': text_color
             }
 
@@ -182,11 +207,11 @@ def create_and_draw_subplots(sub_category_data):
         ordered_sizes = [node_attributes.get(node, {}).get('size', MIN_NODE_SIZE) for node in node_list]
         ordered_colors = [node_attributes.get(node, {}).get('color', DEFAULT_COLOR) for node in node_list]
 
-        # 5. 노드 및 엣지 그리기
+        # 노드 및 엣지 그리기
         nx.draw_networkx_nodes(G_sub, pos, ax=ax, node_size=ordered_sizes, node_color=ordered_colors, alpha=MAX_NODE_ALPHA)
         nx.draw_networkx_edges(G_sub, pos, ax=ax, width=EDGE_WIDTH, alpha=EDGE_ALPHA, edge_color='lightgrey')
 
-        # 6. 레이블 개별적으로 그리기 (텍스트 색상 적용)
+        # 레이블 개별적으로 그리기 (텍스트 색상 적용)
         for node, (x, y) in pos.items():
             attributes = node_attributes.get(node, {})
             text_color = attributes.get('text_color', 'black')
@@ -200,7 +225,7 @@ def create_and_draw_subplots(sub_category_data):
                     ha='center',
                     va='center')
 
-        # 7. 서브플롯 제목 및 축 설정
+        # 서브플롯 제목 및 축 설정
         ax.set_title(sub_category, fontproperties=fm.FontProperties(fname=FONT_PATH, size=FONT_SIZE+2, weight=FONT_WEIGHT))
         ax.axis('off')
         print(f"'{sub_category}' 그래프 그리기 완료.")
@@ -214,7 +239,7 @@ def create_and_draw_subplots(sub_category_data):
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     try:
         plt.savefig(OUTPUT_FILE, dpi=150, bbox_inches='tight', facecolor='white')
-        print(f"전체 네트워크 시각화 이미지가 '{OUTPUT_FILE}'로 저장되었습니다.") # <<< 출력 파일 이름 확인
+        print(f"전체 네트워크 시각화 이미지가 '{OUTPUT_FILE}'로 저장되었습니다.")
     except Exception as e:
         print(f"ERROR saving image file: {e}")
         raise e
