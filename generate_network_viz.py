@@ -18,8 +18,9 @@ OUTPUT_FILE = os.path.join(OUTPUT_DIR, 'network_viz.png')
 
 # --- 시각화 조정 변수 ---
 NUM_COLS = 2
-MAX_NODE_SIZE = 4500
-MIN_NODE_SIZE = 700
+# <<< 노드 크기 전체적으로 줄이기 >>>
+MAX_NODE_SIZE = 3400 # 최대 노드 크기 감소
+MIN_NODE_SIZE = 600  # 최소 노드 크기 감소
 MAX_NODE_ALPHA = 1.0
 FONT_SIZE = 8
 FONT_WEIGHT = 'bold'
@@ -28,10 +29,9 @@ LAYOUT_ITERATIONS = 150
 FIG_WIDTH = 10
 FIG_HEIGHT = 7
 
-# --- <<< 엣지(선) 관련 설정값 변경 >>> ---
-EDGE_WIDTH = 0.8     # 선 굵기 증가
-EDGE_ALPHA = 0.4     # 선 투명도 감소 (더 진하게)
-EDGE_BASE_COLOR = 'grey' # 선 기본 색상 (조금 더 진하게)
+EDGE_WIDTH = 0.8     # 선 굵기 (이전 유지)
+EDGE_ALPHA = 0.4     # 선 투명도 (이전 유지)
+EDGE_BASE_COLOR = 'grey' # 선 색상 (이전 유지)
 
 # --- 열(Column)별 기본 색상 ---
 COL1_BASE_COLOR = 'dodgerblue'
@@ -109,12 +109,11 @@ def create_and_draw_subplots(sub_category_data):
     axes = axes.flatten()
     print(f"서브플롯 생성: {num_rows}행 x {NUM_COLS}열")
 
+
     plot_index = 0
     for sub_category, keywords in sub_category_data.items():
         # ... (이전과 동일: 빈 카테고리 처리, 기본 색상 결정) ...
-        if plot_index >= len(axes):
-            print("경고: 서브플롯 개수보다 하위 카테고리가 많습니다.")
-            break
+        if plot_index >= len(axes): print("경고: 서브플롯 개수보다 하위 카테고리가 많습니다."); break
         ax = axes[plot_index]
         current_col_index = plot_index % NUM_COLS
         if current_col_index == 0: base_color_name = COL1_BASE_COLOR
@@ -126,22 +125,18 @@ def create_and_draw_subplots(sub_category_data):
             print(f"Skipping empty sub-category: {sub_category}")
             ax.set_title(f"{sub_category} (키워드 없음)", fontproperties=fm.FontProperties(fname=FONT_PATH, size=FONT_SIZE+2, weight=FONT_WEIGHT))
             ax.axis('off')
-            plot_index += 1
-            continue
+            plot_index += 1; continue
 
         print(f"'{sub_category}' 그래프 생성 및 그리기 시작 (기본색: {base_color_name})...")
 
         # ... (이전과 동일: 그래프 생성, 엣지 추가, 레이아웃 계산) ...
-        G_sub = nx.Graph()
-        center_node = None
+        G_sub = nx.Graph(); center_node = None
         if keywords: center_node = keywords[0]
         for keyword in keywords: G_sub.add_node(keyword)
         keyword_list_for_edges = list(keywords)
         for i in range(len(keyword_list_for_edges)):
-            for j in range(i + 1, len(keyword_list_for_edges)):
-                G_sub.add_edge(keyword_list_for_edges[i], keyword_list_for_edges[j])
-        effective_k = LAYOUT_K
-        num_nodes = G_sub.number_of_nodes()
+            for j in range(i + 1, len(keyword_list_for_edges)): G_sub.add_edge(keyword_list_for_edges[i], keyword_list_for_edges[j])
+        effective_k = LAYOUT_K; num_nodes = G_sub.number_of_nodes()
         if num_nodes > 1: effective_k = max(0.05, LAYOUT_K / (num_nodes ** 0.6))
         fixed_positions, initial_pos, fixed_nodes = {}, {}, []
         if center_node and center_node in G_sub:
@@ -149,25 +144,30 @@ def create_and_draw_subplots(sub_category_data):
             fixed_nodes = [center_node]
         pos = nx.spring_layout(G_sub, k=effective_k, pos=initial_pos if initial_pos else None, fixed=fixed_nodes if fixed_nodes else None, iterations=LAYOUT_ITERATIONS, seed=42)
 
-        # ... (이전과 동일: 노드 속성 계산 - 크기, 색상, 텍스트 색상) ...
+
+        # 노드별 속성 계산 (크기, 색상, 텍스트 색상 - 크기 값만 변경됨)
         node_attributes = {}
         num_keywords = len(keywords)
         for kw_idx, keyword in enumerate(keywords):
-            importance_ratio_rev = 1.0 - ((kw_idx / (num_keywords - 1)) if num_keywords > 1 else 0)
-            current_size = MIN_NODE_SIZE + (MAX_NODE_SIZE - MIN_NODE_SIZE) * importance_ratio_rev if kw_idx > 0 else MAX_NODE_SIZE
+            # 크기 (중앙=MAX, 주변=MIN)
+            current_size = MIN_NODE_SIZE # <<< 주변 노드 크기 적용
+            if kw_idx == 0:
+                current_size = MAX_NODE_SIZE # <<< 중앙 노드 크기 적용
+
+            # 색상 (중앙=진하게, 주변=연하게)
             current_color_rgb = get_color_tint(base_rgb, LIGHT_TINT_FACTOR) if kw_idx > 0 else get_color_shade(base_rgb, DARK_SHADE_FACTOR)
+            # 텍스트 색상
             text_color = get_text_color_for_bg(current_color_rgb)
+
             node_attributes[keyword] = {'size': current_size, 'color': current_color_rgb, 'text_color': text_color}
+
         node_list = list(G_sub.nodes())
         ordered_sizes = [node_attributes.get(node, {}).get('size', MIN_NODE_SIZE) for node in node_list]
         ordered_colors = [node_attributes.get(node, {}).get('color', DEFAULT_COLOR) for node in node_list]
 
-
-        # 노드 그리기 (테두리 포함)
+        # 노드 및 엣지 그리기
         nx.draw_networkx_nodes(G_sub, pos, ax=ax, node_size=ordered_sizes, node_color=ordered_colors, alpha=MAX_NODE_ALPHA,
                                edgecolors=NODE_BORDER_COLOR, linewidths=NODE_BORDER_WIDTH)
-
-        # --- <<< 엣지(선) 그리기 (수정된 설정값 사용) >>> ---
         nx.draw_networkx_edges(G_sub, pos, ax=ax, width=EDGE_WIDTH, alpha=EDGE_ALPHA, edge_color=EDGE_BASE_COLOR)
 
         # 레이블 그리기
@@ -193,7 +193,6 @@ def create_and_draw_subplots(sub_category_data):
     except Exception as e: print(f"ERROR saving image file: {e}"); raise e
     finally: plt.close(fig)
 
-
 def main():
     # ... (이전과 동일) ...
     print(f"키워드 입력 파일: {INPUT_FILE}")
@@ -206,6 +205,6 @@ def main():
     except Exception as e:
         print(f"스크립트 실행 중 오류 발생: {e}")
 
-
 if __name__ == "__main__":
     main()
+
